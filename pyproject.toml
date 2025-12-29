@@ -1,0 +1,124 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stache-tools"
+version = "0.1.0"
+description = "Utilities and tools for the Stache RAG system"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Stache Team"},
+]
+keywords = ["rag", "stache", "cli", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "httpx>=0.27.0",
+    "httpx-auth>=0.22.0",
+    "tenacity>=8.0.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "click>=8.0",
+    "rich>=13.0",
+    "mcp>=1.0.0,<2.0.0",
+    "pypdf>=4.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+lambda = [
+    "boto3>=1.26.0",
+]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "respx>=0.21.0",
+    "ruff>=0.4.0",
+    "boto3>=1.26.0",
+    "moto>=5.0.0",
+]
+all = [
+    "boto3>=1.26.0",
+]
+
+[project.scripts]
+stache = "stache_tools.cli:main"
+stache-mcp = "stache_tools.mcp:main"
+
+# Entry points for external plugins to register additional loaders
+# Built-in loaders are loaded directly in registry.py
+# Example plugin entry point:
+# [project.entry-points."stache_tools.loaders"]
+# my_loader = "my_plugin.loaders:MyCustomLoader"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stache_tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "--disable-warnings",
+]
+markers = [
+    "asyncio: marks tests as async",
+    "integration: marks tests as integration tests",
+]
+
+[tool.coverage.run]
+source = ["src/stache_tools"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "N",
+    "UP",
+    "RUF",
+]
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["stache_tools"]
