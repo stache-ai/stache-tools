@@ -54,6 +54,11 @@ all = [
     "boto3>=1.26.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/stache-ai/stache-tools"
+Repository = "https://github.com/stache-ai/stache-tools"
+Issues = "https://github.com/stache-ai/stache-tools/issues"
+
 [project.scripts]
 stache = "stache_tools.cli:main"
 stache-mcp = "stache_tools.mcp:main"
