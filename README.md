@@ -1,6 +1,6 @@
 # stache-tools
 
-CLI and MCP server for the [Stache](https://github.com/stache-ai/stache) knowledge base.
+CLI and MCP server for the [Stache](https://github.com/stache-ai/stache-ai) knowledge base.
 
 ## Installation
 
@@ -16,10 +16,10 @@ This provides two commands:
 
 ### 1. Start Stache Server
 
-See the [Stache repository](https://github.com/stache-ai/stache) for full setup instructions, or quick start:
+See the [Stache repository](https://github.com/stache-ai/stache-ai) for full setup instructions, or quick start:
 
 ```bash
-git clone https://github.com/stache-ai/stache.git
+git clone https://github.com/stache-ai/stache-ai.git
 cd stache
 docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 ```
@@ -35,7 +35,7 @@ Add to your Claude config file:
     "stache-local": {
       "command": "stache-mcp",
       "env": {
-        "STACHE_API_URL": "http://localhost:8000/api/"
+        "STACHE_API_URL": "http://localhost:8000"
       }
     }
   }
@@ -50,7 +50,7 @@ Add to your Claude config file:
       "command": "python",
       "args": ["-m", "stache_tools.mcp"],
       "env": {
-        "STACHE_API_URL": "http://localhost:8000/api/"
+        "STACHE_API_URL": "http://localhost:8000"
       }
     }
   }
@@ -80,7 +80,7 @@ Restart Claude Code/Desktop to load the MCP server.
 
 ```bash
 # Set API URL
-export STACHE_API_URL=http://localhost:8000/api/
+export STACHE_API_URL=http://localhost:8000
 
 # Health check
 stache health
@@ -152,7 +152,7 @@ with StacheAPI() as api:
 
 - [Full Setup Guide](https://github.com/stache-ai/stache-tools/blob/main/docs/SETUP.md) - Detailed installation and configuration
 - [Troubleshooting](https://github.com/stache-ai/stache-tools/blob/main/docs/TROUBLESHOOTING.md) - Common issues and solutions
-- [Stache Server](https://github.com/stache-ai/stache) - Main Stache repository
+- [Stache Server](https://github.com/stache-ai/stache-ai) - Main Stache repository
 
 ## License
 

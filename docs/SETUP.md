@@ -12,7 +12,7 @@ Complete setup instructions for stache-tools with different deployment scenarios
 ### Step 1: Start Stache Server
 
 ```bash
-git clone https://github.com/stache-ai/stache.git
+git clone https://github.com/stache-ai/stache-ai.git
 cd stache
 ```
 
@@ -58,7 +58,7 @@ docker compose -f docker-compose.yml -f docker-compose.openai.yml up -d
 
 **Verify it's running:**
 ```bash
-curl http://localhost:8000/api/health
+curl http://localhost:8000health
 ```
 
 ### Embedding Model Options (Ollama)
@@ -96,7 +96,7 @@ Add to your Claude Code config file:
     "stache-local": {
       "command": "stache-mcp",
       "env": {
-        "STACHE_API_URL": "http://localhost:8000/api/"
+        "STACHE_API_URL": "http://localhost:8000"
       }
     }
   }
@@ -112,7 +112,7 @@ Add to your Claude Code config file:
       "command": "python",
       "args": ["-m", "stache_tools.mcp"],
       "env": {
-        "STACHE_API_URL": "http://localhost:8000/api/"
+        "STACHE_API_URL": "http://localhost:8000"
       }
     }
   }
@@ -134,7 +134,7 @@ Add to your Claude Desktop config file:
       "command": "python",
       "args": ["-m", "stache_tools.mcp"],
       "env": {
-        "STACHE_API_URL": "http://localhost:8000/api/"
+        "STACHE_API_URL": "http://localhost:8000"
       }
     }
   }
@@ -149,7 +149,7 @@ Restart Claude Code or Claude Desktop to pick up the new MCP server.
 
 ```bash
 # CLI test
-export STACHE_API_URL=http://localhost:8000/api/
+export STACHE_API_URL=http://localhost:8000
 stache health
 stache ingest -t "The quick brown fox jumps over the lazy dog" -n test
 stache search "fox"
@@ -246,7 +246,7 @@ All settings use the `STACHE_` prefix.
 For local development against a Docker/local server, just set the API URL:
 
 ```bash
-STACHE_API_URL=http://localhost:8000/api/
+STACHE_API_URL=http://localhost:8000
 ```
 
 OAuth is **disabled** when Cognito variables are not set.

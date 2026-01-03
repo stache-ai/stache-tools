@@ -30,9 +30,9 @@ Error: Connection refused to localhost:8000
 
 ## 404 Not Found on API Calls
 
-**Cause**: Wrong API path. Local server uses `/api/` prefix.
+**Cause**: Wrong API URL format.
 
-**Solution**: Use `STACHE_API_URL=http://localhost:8000/api/` (note the `/api/` suffix)
+**Solution**: Use `STACHE_API_URL=http://localhost:8000` (without `/api/` suffix - the client adds it automatically)
 
 ---
 
@@ -121,7 +121,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d
 **Cause**: The MCP server can connect but can't reach the Stache API.
 
 **Solutions**:
-1. Verify `STACHE_API_URL` includes the `/api/` path
+1. Verify `STACHE_API_URL` is set to `http://localhost:8000` (without `/api/` suffix)
 2. Check if Stache is running: `curl http://localhost:8000/api/health`
 3. Check MCP server logs in Claude's output panel
 
