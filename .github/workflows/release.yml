@@ -1,0 +1,85 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: stache-linux
+            ext: ""
+          - os: windows-latest
+            artifact: stache-windows
+            ext: ".exe"
+          - os: macos-latest
+            artifact: stache-macos
+            ext: ""
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pyinstaller
+
+      - name: Build executables
+        run: python scripts/build_exe.py --pyinstaller
+
+      - name: Rename artifacts (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mv dist/stache dist/stache-${{ runner.os | lower }}
+          mv dist/stache-mcp dist/stache-mcp-${{ runner.os | lower }}
+
+      - name: Rename artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mv dist/stache.exe dist/stache-windows.exe
+          mv dist/stache-mcp.exe dist/stache-mcp-windows.exe
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/stache*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure
+        run: ls -R artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/stache-linux/*
+            artifacts/stache-windows/*
+            artifacts/stache-macos/*
+          generate_release_notes: true
