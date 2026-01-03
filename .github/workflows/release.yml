@@ -8,20 +8,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            artifact: stache-linux
-            ext: ""
-          - os: windows-latest
-            artifact: stache-windows
-            ext: ".exe"
-          - os: macos-latest
-            artifact: stache-macos
-            ext: ""
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -40,24 +27,11 @@ jobs:
       - name: Build executables
         run: python scripts/build_exe.py --pyinstaller
 
-      - name: Rename artifacts (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mv dist/stache dist/stache-${{ runner.os | lower }}
-          mv dist/stache-mcp dist/stache-mcp-${{ runner.os | lower }}
-
-      - name: Rename artifacts (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          mv dist/stache.exe dist/stache-windows.exe
-          mv dist/stache-mcp.exe dist/stache-mcp-windows.exe
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/stache*
+          name: stache-windows
+          path: dist/*.exe
 
   release:
     needs: build
@@ -78,8 +52,5 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/stache-linux/*
-            artifacts/stache-windows/*
-            artifacts/stache-macos/*
+          files: artifacts/stache-windows/*
           generate_release_notes: true
