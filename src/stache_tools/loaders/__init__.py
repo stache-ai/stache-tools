@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import BinaryIO
 
 from .base import DocumentLoader, LoadedDocument
+from .documents import DocxLoader, EpubLoader, PptxLoader
 from .pdf import BasicPDFLoader
 from .registry import LoaderRegistry
 from .text import MarkdownLoader, TextLoader
@@ -34,10 +35,13 @@ def load_document(file_or_path: str | Path | BinaryIO, filename: str | None = No
 
 __all__ = [
     "BasicPDFLoader",
+    "DocxLoader",
     "DocumentLoader",
+    "EpubLoader",
     "LoadedDocument",
     "LoaderRegistry",
     "MarkdownLoader",
+    "PptxLoader",
     "TextLoader",
     "load_document",
 ]

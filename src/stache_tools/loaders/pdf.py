@@ -1,6 +1,7 @@
 """PDF document loader using pypdf."""
 
 import logging
+import warnings
 from typing import BinaryIO
 
 from pypdf import PdfReader
@@ -18,7 +19,17 @@ class BasicPDFLoader(DocumentLoader):
         return [".pdf"]
 
     def load(self, file: BinaryIO, filename: str) -> LoadedDocument:
-        reader = PdfReader(file)
+        # Suppress pypdf warnings about malformed PDFs (they usually still extract fine)
+        # These warnings like "Ignoring wrong pointing object" are common in PDFs
+        # converted from other formats or with complex layouts
+        pypdf_logger = logging.getLogger('pypdf._reader')
+        original_level = pypdf_logger.level
+        pypdf_logger.setLevel(logging.ERROR)
+
+        try:
+            reader = PdfReader(file)
+        finally:
+            pypdf_logger.setLevel(original_level)
 
         text_parts = []
         for page in reader.pages:

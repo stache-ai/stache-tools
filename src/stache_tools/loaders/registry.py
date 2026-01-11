@@ -53,6 +53,7 @@ class LoaderRegistry:
 
     def _load_builtin(self) -> None:
         """Load built-in loaders."""
+        from .documents import DocxLoader, EpubLoader, PptxLoader
         from .pdf import BasicPDFLoader
         from .text import MarkdownLoader, TextLoader
 
@@ -60,6 +61,9 @@ class LoaderRegistry:
             TextLoader(),
             MarkdownLoader(),
             BasicPDFLoader(),
+            DocxLoader(),
+            PptxLoader(),
+            EpubLoader(),
         ])
         logger.debug(f"Loaded {len(self._loaders)} built-in loaders")
 
@@ -106,3 +110,9 @@ class LoaderRegistry:
         """Manually register a loader."""
         with LoaderRegistry._lock:
             self._loaders.append(loader)
+
+    @classmethod
+    def _reset(cls) -> None:
+        """Reset singleton for testing. Do not use in production."""
+        with cls._lock:
+            cls._instance = None
