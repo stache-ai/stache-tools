@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stache-tools"
-version = "0.1.0"
+version = "0.1.1"
 description = "Utilities and tools for the Stache RAG system"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,6 +35,7 @@ dependencies = [
     "mcp>=1.0.0,<2.0.0",
     "pypdf>=4.0.0",
     "python-dotenv>=1.0.0",
+    "stache-ai-documents>=0.1.0",
 ]
 
 [project.optional-dependencies]

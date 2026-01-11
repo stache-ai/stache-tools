@@ -160,9 +160,9 @@ class LambdaTransport:
         body: dict | None = None,
         params: dict | None = None,
     ) -> dict:
-        """Build API Gateway REST API format event.
+        """Build API Gateway HTTP API v2 format event.
 
-        The Lambda handler expects events in API Gateway v1 (REST API) format.
+        The Lambda handler uses Mangum with HTTP API v2 format.
 
         Args:
             method: HTTP method (GET, POST, PUT, DELETE)
@@ -171,18 +171,37 @@ class LambdaTransport:
             params: Optional query string parameters
 
         Returns:
-            Event dictionary in API Gateway v1 format
+            Event dictionary in API Gateway HTTP API v2 format
         """
+        # Build query string from params
+        query_string = ""
+        if params:
+            query_string = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
+
         return {
-            "httpMethod": method,
-            "path": path,
-            "body": json.dumps(body) if body else None,
-            "headers": {"Content-Type": "application/json"},
+            "version": "2.0",
+            "rawPath": path,
+            "rawQueryString": query_string,
+            "headers": {"content-type": "application/json"},
             "queryStringParameters": params,
-            "pathParameters": None,
+            "body": json.dumps(body) if body else None,
+            "isBase64Encoded": False,
             "requestContext": {
-                "identity": {},
-                "requestId": None,  # Lambda will generate if needed
+                "http": {
+                    "method": method,
+                    "path": path,
+                    "protocol": "HTTP/1.1",
+                    "sourceIp": "127.0.0.1",
+                    "userAgent": "stache-tools/lambda",
+                },
+                "stage": "$default",
+                "requestId": "lambda-direct",
+                "accountId": "local",
+                "apiId": "local",
+                "domainName": "localhost",
+                "domainPrefix": "localhost",
+                "time": "",
+                "timeEpoch": 0,
             },
         }
 

@@ -1,12 +1,21 @@
 """Pytest configuration and fixtures."""
 
 import json
+import os
 from io import BytesIO
 from unittest.mock import MagicMock
 
 import pytest
 
 from stache_tools.client.config import StacheConfig
+
+
+@pytest.fixture(autouse=True)
+def clean_stache_env(monkeypatch):
+    """Clean STACHE_* environment variables before each test."""
+    for key in list(os.environ.keys()):
+        if key.startswith("STACHE_"):
+            monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture

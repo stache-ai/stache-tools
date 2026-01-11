@@ -22,9 +22,7 @@ def namespace():
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 def list_namespaces(as_json: bool):
     """List all namespaces."""
-    api = StacheAPI()
-
-    try:
+    with StacheAPI() as api:
         result = api.list_namespaces()
 
         if as_json:
@@ -54,8 +52,6 @@ def list_namespaces(as_json: bool):
             )
 
         console.print(table)
-    finally:
-        api.close()
 
 
 @namespace.command("get")
@@ -63,9 +59,7 @@ def list_namespaces(as_json: bool):
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 def get_namespace(ns_id: str, as_json: bool):
     """Get namespace details."""
-    api = StacheAPI()
-
-    try:
+    with StacheAPI() as api:
         result = api.get_namespace(ns_id)
 
         if as_json:
@@ -82,8 +76,6 @@ def get_namespace(ns_id: str, as_json: bool):
             f"[bold]Updated:[/bold] {result.get('updated_at', '')[:19] if result.get('updated_at') else '-'}",
             title=f"[cyan]{ns_id}[/cyan]",
         ))
-    finally:
-        api.close()
 
 
 @namespace.command("create")
@@ -94,8 +86,6 @@ def get_namespace(ns_id: str, as_json: bool):
 @click.option("--metadata", "-m", help="Metadata as JSON")
 def create_namespace(ns_id: str, name: str, description: str, parent: str | None, metadata: str | None):
     """Create a namespace."""
-    api = StacheAPI()
-
     # Parse metadata if provided
     meta_dict = None
     if metadata:
@@ -105,11 +95,9 @@ def create_namespace(ns_id: str, name: str, description: str, parent: str | None
             console.print(f"[red]Invalid metadata JSON: {e}[/red]")
             return
 
-    try:
+    with StacheAPI() as api:
         api.create_namespace(id=ns_id, name=name, description=description, parent_id=parent, metadata=meta_dict)
         console.print(f"[green]Created namespace:[/green] {ns_id}")
-    finally:
-        api.close()
 
 
 @namespace.command("update")
@@ -119,8 +107,6 @@ def create_namespace(ns_id: str, name: str, description: str, parent: str | None
 @click.option("--metadata", "-m", help="New metadata as JSON")
 def update_namespace(ns_id: str, name: str | None, description: str | None, metadata: str | None):
     """Update a namespace."""
-    api = StacheAPI()
-
     # Parse metadata if provided
     meta_dict = None
     if metadata:
@@ -134,11 +120,9 @@ def update_namespace(ns_id: str, name: str | None, description: str | None, meta
         console.print("[yellow]Nothing to update. Provide --name, --description, or --metadata[/yellow]")
         return
 
-    try:
+    with StacheAPI() as api:
         api.update_namespace(id=ns_id, name=name, description=description, metadata=meta_dict)
         console.print(f"[green]Updated namespace:[/green] {ns_id}")
-    finally:
-        api.close()
 
 
 @namespace.command("delete")
@@ -153,9 +137,7 @@ def delete_namespace(ns_id: str, cascade: bool, yes: bool):
         else:
             click.confirm(f"Delete namespace '{ns_id}'?", abort=True)
 
-    api = StacheAPI()
-
-    try:
+    with StacheAPI() as api:
         result = api.delete_namespace(id=ns_id, cascade=cascade)
         if cascade:
             chunks = result.get("chunks_deleted", 0)
@@ -163,5 +145,3 @@ def delete_namespace(ns_id: str, cascade: bool, yes: bool):
             console.print(f"[green]Deleted namespace:[/green] {ns_id} ({docs} docs, {chunks} chunks)")
         else:
             console.print(f"[green]Deleted namespace:[/green] {ns_id}")
-    finally:
-        api.close()

@@ -114,7 +114,7 @@ class StacheAPI:
         """Ingest text content.
 
         Args:
-            text: Text content to ingest (max 100KB)
+            text: Text content to ingest (max 10MB, server-side configurable)
             namespace: Target namespace
             metadata: Optional metadata to attach
             chunking_strategy: Chunking strategy (recursive, markdown, semantic, character)
@@ -124,10 +124,12 @@ class StacheAPI:
             Ingest result with document ID and chunk count
 
         Raises:
-            ValueError: If text exceeds 100KB
+            ValueError: If text exceeds 10MB (or server's configured limit)
         """
-        if len(text.encode("utf-8")) > 100 * 1024:
-            raise ValueError("Text exceeds maximum size of 100KB")
+        # Client-side check matches default server limit
+        # Server may have different limit via MAX_INGEST_TEXT_BYTES env var
+        if len(text.encode("utf-8")) > 10 * 1024 * 1024:
+            raise ValueError("Text exceeds maximum size of 10MB")
 
         data: dict[str, Any] = {
             "text": text,

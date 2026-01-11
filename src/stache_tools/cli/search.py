@@ -32,8 +32,6 @@ def search(
     as_json: bool,
 ):
     """Search the knowledge base."""
-    api = StacheAPI()
-
     # Parse filter JSON if provided
     filter_dict = None
     if filter_json:
@@ -43,7 +41,7 @@ def search(
             console.print(f"[red]Invalid filter JSON: {e}[/red]")
             return
 
-    try:
+    with StacheAPI() as api:
         result = api.search(
             query,
             namespace=namespace,
@@ -87,6 +85,3 @@ def search(
                 title=f"[cyan]{i}. {filename}[/cyan] (score: {score:.3f})",
                 subtitle=f"namespace: {ns}",
             ))
-
-    finally:
-        api.close()

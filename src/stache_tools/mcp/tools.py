@@ -131,6 +131,7 @@ def get_tool_definitions() -> list[Tool]:
                     "id": {"type": "string", "description": "Namespace ID (e.g., 'mba/finance')"},
                     "name": {"type": "string", "description": "Display name"},
                     "description": {"type": "string", "description": "What belongs in this namespace"},
+                    "parent_id": {"type": "string", "description": "Optional parent namespace ID for hierarchy"},
                 },
                 "required": ["id", "name"],
             },
@@ -318,7 +319,21 @@ class ToolHandler:
         if error:
             return self._error(error)
 
-        await asyncio.to_thread(self.api.create_namespace, id=ns_id, name=name, description=args.get("description", ""))
+        # Validate parent_id if provided
+        parent_id = args.get("parent_id")
+        if parent_id:
+            parent_id = parent_id.strip()
+            error = validate_id(parent_id, "Parent namespace ID")
+            if error:
+                return self._error(error)
+
+        await asyncio.to_thread(
+            self.api.create_namespace,
+            id=ns_id,
+            name=name,
+            description=args.get("description", ""),
+            parent_id=parent_id
+        )
         return [TextContent(type="text", text=f"Created namespace: {ns_id}")]
 
     async def _handle_get_namespace(self, args: dict) -> list[TextContent]:

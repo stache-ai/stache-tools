@@ -24,9 +24,7 @@ def doc():
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 def list_documents(namespace: str | None, limit: int, as_json: bool):
     """List documents."""
-    api = StacheAPI()
-
-    try:
+    with StacheAPI() as api:
         result = api.list_documents(namespace=namespace, limit=limit)
 
         if as_json:
@@ -59,8 +57,6 @@ def list_documents(namespace: str | None, limit: int, as_json: bool):
         next_key = result.get("next_key")
         if next_key:
             console.print(f"\n[dim]More results available. Use --limit to fetch more.[/dim]")
-    finally:
-        api.close()
 
 
 @doc.command("get")
@@ -69,9 +65,7 @@ def list_documents(namespace: str | None, limit: int, as_json: bool):
 @click.option("--json", "as_json", is_flag=True, help="Output as JSON")
 def get_document(doc_id: str, namespace: str, as_json: bool):
     """Get document details and content."""
-    api = StacheAPI()
-
-    try:
+    with StacheAPI() as api:
         result = api.get_document(doc_id, namespace)
 
         if as_json:
@@ -94,8 +88,6 @@ def get_document(doc_id: str, namespace: str, as_json: bool):
             console.print(text[:2000])
             if len(text) > 2000:
                 console.print(f"\n[dim]... ({len(text) - 2000} more characters)[/dim]")
-    finally:
-        api.close()
 
 
 @doc.command("delete")
@@ -107,14 +99,10 @@ def delete_document(doc_id: str, namespace: str, yes: bool):
     if not yes:
         click.confirm(f"Delete document '{doc_id}'?", abort=True)
 
-    api = StacheAPI()
-
-    try:
+    with StacheAPI() as api:
         result = api.delete_document(doc_id, namespace)
         if result.get("success"):
             chunks = result.get("chunks_deleted", 0)
             console.print(f"[green]Deleted document ({chunks} chunks)[/green]")
         else:
             console.print(f"[red]Error:[/red] {result.get('error')}")
-    finally:
-        api.close()

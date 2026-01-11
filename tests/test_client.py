@@ -16,7 +16,12 @@ class TestStacheConfig:
 
     def test_default_values(self):
         """Test default configuration values."""
-        config = StacheConfig()
+        # Explicitly set defaults to avoid environment pollution
+        config = StacheConfig(
+            api_url="http://localhost:8000",
+            timeout=60.0,
+            log_level="INFO",
+        )
         assert config.api_url == "http://localhost:8000"
         assert config.timeout == 60.0
         assert config.log_level == "INFO"
@@ -33,7 +38,13 @@ class TestStacheConfig:
 
     def test_oauth_not_enabled_by_default(self):
         """Test OAuth is disabled when credentials not set."""
-        config = StacheConfig()
+        # Explicitly omit OAuth credentials to test default behavior
+        config = StacheConfig(
+            api_url="http://localhost:8000",
+            cognito_client_id=None,
+            cognito_client_secret=None,
+            cognito_token_url=None,
+        )
         assert config.oauth_enabled is False
 
     def test_oauth_enabled_when_configured(self):

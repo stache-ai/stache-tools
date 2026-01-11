@@ -1,8 +1,10 @@
 """Ingest command for uploading files to Stache."""
 
 import json
+import logging
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import click
@@ -27,20 +29,45 @@ def ingest_file(
     chunking_strategy: str,
     metadata: dict | None,
     prepend_metadata: list[str] | None,
-) -> bool:
-    """Ingest a single file. Returns True on success."""
+) -> dict:
+    """Ingest a single file.
+
+    Returns:
+        dict with keys:
+        - status: "success" | "skipped" | "error"
+        - reason: str (for skipped/error)
+        - chunks: int (for success)
+        - filepath: Path
+        - message: str (formatted message for display)
+    """
     loader = registry.get_loader(filepath.name)
     if loader is None:
-        console.print(f"[yellow]Skipping {filepath} - no loader available[/yellow]")
-        return False
+        return {
+            'status': 'skipped',
+            'reason': 'no_loader',
+            'filepath': filepath,
+            'chunks': 0,
+            'message': f"[yellow]○[/yellow] {filepath.name} (no loader)"
+        }
 
     try:
         with open(filepath, "rb") as f:
             doc = loader.load(f, filepath.name)
 
+        # Check for empty content
+        if not doc.text.strip():
+            return {
+                'status': 'skipped',
+                'reason': 'empty',
+                'filepath': filepath,
+                'chunks': 0,
+                'message': f"[yellow]○[/yellow] {filepath.name} (empty)"
+            }
+
         # Merge metadata
         file_metadata = doc.metadata.copy()
-        file_metadata["source_file"] = str(filepath)
+        file_metadata["source_path"] = filepath.name
+        file_metadata["filename"] = filepath.name
         if metadata:
             file_metadata.update(metadata)
 
@@ -51,34 +78,85 @@ def ingest_file(
             chunking_strategy=chunking_strategy,
             prepend_metadata=prepend_metadata,
         )
-        chunks = result.get("chunks_created", "?")
-        console.print(f"[green]✓[/green] {filepath.name} → {chunks} chunks")
-        return True
+        chunks = result.get("chunks_created", 0)
+        return {
+            'status': 'success',
+            'filepath': filepath,
+            'chunks': chunks,
+            'message': f"[green]✓[/green] {filepath.name} → {chunks} chunks"
+        }
     except StacheError as e:
-        console.print(f"[red]✗[/red] {filepath.name}: {e}")
-        return False
+        return {
+            'status': 'error',
+            'reason': str(e),
+            'filepath': filepath,
+            'chunks': 0,
+            'message': f"[red]✗[/red] {filepath.name}: {e}"
+        }
     except Exception as e:
-        console.print(f"[red]✗[/red] {filepath.name}: {e}")
-        return False
+        return {
+            'status': 'error',
+            'reason': str(e),
+            'filepath': filepath,
+            'chunks': 0,
+            'message': f"[red]✗[/red] {filepath.name}: {e}"
+        }
 
 
-def collect_files(path: Path, recursive: bool) -> list[Path]:
-    """Collect files to ingest."""
+def ingest_file_worker(args: tuple) -> dict:
+    """Worker function for parallel file processing.
+
+    Creates a fresh StacheAPI client per call to avoid sharing mutable state.
+    OAuth token cache is shared at module level (thread-safe).
+    LoaderRegistry is singleton (thread-safe).
+    """
+    filepath, config, namespace, chunking_strategy, metadata, prepend_keys = args
+
+    # Create fresh client per file (HTTPTransport has mutable state)
+    with StacheAPI(config) as client:
+        registry = LoaderRegistry()
+        return ingest_file(
+            client, registry, filepath, namespace,
+            chunking_strategy, metadata, prepend_keys
+        )
+
+
+def _print_summary(success: int, failed: int, skipped: int, total_chunks: int, namespace: str | None) -> None:
+    """Print ingestion summary."""
+    console.print()
+    console.print(f"[bold]{'='*50}[/bold]")
+    console.print("[bold]Import Complete[/bold]")
+    console.print(f"  Successful: {success} files")
+    console.print(f"  Failed: {failed} files")
+    console.print(f"  Skipped: {skipped} files")
+    console.print(f"  Total chunks: {total_chunks}")
+    console.print(f"  Namespace: {namespace or 'default'}")
+    console.print(f"[bold]{'='*50}[/bold]")
+
+
+def collect_files(path: Path, pattern: str, recursive: bool) -> list[Path]:
+    """Collect files matching pattern.
+
+    Args:
+        path: Base path (file or directory)
+        pattern: Glob pattern (e.g., "*.md", "data_*.json")
+        recursive: Whether to search subdirectories
+
+    Returns:
+        Sorted list of file paths
+    """
     if path.is_file():
         return [path]
 
     if not path.is_dir():
         return []
 
-    files = []
     if recursive:
-        for root, _, filenames in os.walk(path):
-            for name in filenames:
-                files.append(Path(root) / name)
+        files = list(path.glob(f"**/{pattern}"))
     else:
-        files = [p for p in path.iterdir() if p.is_file()]
+        files = list(path.glob(pattern))
 
-    return sorted(files)
+    return sorted(f for f in files if f.is_file())
 
 
 @click.command("ingest")
@@ -98,7 +176,16 @@ def collect_files(path: Path, recursive: bool) -> list[Path]:
 )
 @click.option("-t", "--text", "text_input", help="Ingest text directly instead of a file")
 @click.option("--stdin", is_flag=True, help="Read text from stdin")
+@click.option("--dry-run", is_flag=True, help="Show what would be ingested without actually doing it")
+@click.option('-y', '--yes', is_flag=True, help='Skip confirmation prompt')
+@click.option('--skip-errors', is_flag=True, help='Continue on errors instead of stopping')
+@click.option('-v', '--verbose', is_flag=True, help='Verbose output with debug logging')
+@click.option('--pattern', default='*', help='Glob pattern for files (default: *)')
+@click.option('-P', '--parallel', default=1, type=click.IntRange(1, 32),
+              help='Number of parallel uploads (1-32, default: 1)')
+@click.pass_context
 def ingest(
+    ctx: click.Context,
     path: str | None,
     namespace: str | None,
     recursive: bool,
@@ -107,6 +194,12 @@ def ingest(
     prepend_metadata: str | None,
     text_input: str | None,
     stdin: bool,
+    dry_run: bool,
+    yes: bool,
+    skip_errors: bool,
+    verbose: bool,
+    pattern: str,
+    parallel: int,
 ) -> None:
     """Ingest files or text into Stache.
 
@@ -122,6 +215,12 @@ def ingest(
       echo "Text from pipe" | stache ingest --stdin -n notes
       stache ingest sermon.txt -m '{"speaker":"Pastor John"}' -p speaker
     """
+    if verbose:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
     config = StacheConfig()
 
     # Parse metadata
@@ -131,7 +230,7 @@ def ingest(
             metadata = json.loads(metadata_json)
         except json.JSONDecodeError as e:
             console.print(f"[red]Invalid metadata JSON: {e}[/red]")
-            return
+            ctx.exit(1)
 
     # Parse prepend_metadata
     prepend_keys = None
@@ -144,7 +243,7 @@ def ingest(
             text_input = sys.stdin.read()
         else:
             console.print("[red]No input on stdin[/red]")
-            return
+            ctx.exit(1)
 
     if text_input:
         # Direct text ingestion
@@ -160,32 +259,66 @@ def ingest(
                 chunks = result.get("chunks_created", "?")
                 doc_id = result.get("doc_id", result.get("document_id", ""))
                 console.print(f"[green]✓[/green] Ingested text → {chunks} chunks (doc: {doc_id[:8]}...)")
+                ctx.exit(0)
             except StacheError as e:
                 console.print(f"[red]✗[/red] Failed: {e}")
-        return
+                ctx.exit(1)
 
     # File/directory ingestion
     if not path:
         console.print("[red]Provide a PATH or use --text/--stdin[/red]")
-        return
+        ctx.exit(1)
 
     registry = LoaderRegistry()
     target = Path(path)
-    files = collect_files(target, recursive)
+    files = collect_files(target, pattern, recursive)
 
     if not files:
         console.print("[yellow]No files to ingest[/yellow]")
         return
 
+    # Require namespace for multi-file ingests
+    if len(files) > 1 and not namespace:
+        console.print("[red]Error: --namespace required for multi-file ingests[/red]")
+        console.print("Specify namespace with -n/--namespace")
+        console.print(f"\nExample: stache ingest {path} -n my-namespace -r")
+        ctx.exit(1)
+
     console.print(f"Found {len(files)} file(s) to process")
     if chunking_strategy != "auto":
         console.print(f"[dim]Chunking strategy: {chunking_strategy}[/dim]")
 
+    if dry_run:
+        console.print(f"\n[bold]Dry Run[/bold] - Would ingest {len(files)} files:")
+        for f in files[:20]:
+            loader = registry.get_loader(f.name)
+            status = "[green]✓[/green]" if loader else "[yellow]skip[/yellow]"
+            console.print(f"  {status} {f}")
+        if len(files) > 20:
+            console.print(f"  ... and {len(files) - 20} more")
+        console.print(f"\nTarget namespace: {namespace or 'default'}")
+        return
+
+    # Confirmation prompt for multi-file ingests
+    if not yes and len(files) > 1:
+        if not click.confirm(f"Ingest {len(files)} files to namespace '{namespace or 'default'}'?"):
+            console.print("Aborted.")
+            return
+
     success = 0
     failed = 0
     skipped = 0
+    total_chunks = 0
 
-    with StacheAPI(config) as client:
+    if parallel > 1:
+        # Parallel processing - each worker creates its own client
+        file_args = [
+            (fp, config, namespace,
+             chunking_strategy if chunking_strategy != "auto" else "recursive",
+             metadata, prepend_keys)
+            for fp in files
+        ]
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -193,23 +326,96 @@ def ingest(
         ) as progress:
             task = progress.add_task("Ingesting...", total=len(files))
 
-            for filepath in files:
-                progress.update(task, description=f"Processing {filepath.name}")
+            with ThreadPoolExecutor(max_workers=parallel) as executor:
+                # Submit all files
+                future_to_file = {
+                    executor.submit(ingest_file_worker, args): args[0]
+                    for args in file_args
+                }
 
-                loader = registry.get_loader(filepath.name)
-                if loader is None:
-                    skipped += 1
-                elif ingest_file(
-                    client, registry, filepath, namespace,
-                    chunking_strategy if chunking_strategy != "auto" else "recursive",
-                    metadata, prepend_keys
-                ):
-                    success += 1
-                else:
-                    failed += 1
+                # Process results as they complete
+                for future in as_completed(future_to_file):
+                    filepath = future_to_file[future]
 
-                progress.advance(task)
+                    try:
+                        result = future.result()
 
-    # Summary
-    console.print()
-    console.print(f"[bold]Results:[/bold] {success} ingested, {failed} failed, {skipped} skipped")
+                        # Defer console output to main thread (thread-safe)
+                        if 'message' in result:
+                            console.print(result['message'])
+
+                        if result['status'] == 'success':
+                            success += 1
+                            total_chunks += result.get('chunks', 0)
+                        elif result['status'] == 'skipped':
+                            skipped += 1
+                        elif result['status'] == 'error':
+                            failed += 1
+                            if not skip_errors:
+                                # Cancel remaining futures
+                                for f in future_to_file:
+                                    if not f.done():
+                                        f.cancel()
+                                console.print(f"[red]Error:[/red] Stopping due to error. Use --skip-errors to continue.")
+                                # Print summary before exiting
+                                _print_summary(success, failed, skipped, total_chunks, namespace)
+                                ctx.exit(1)
+                    except Exception as e:
+                        failed += 1
+                        console.print(f"[red]✗[/red] {filepath.name}: {e}")
+                        if not skip_errors:
+                            for f in future_to_file:
+                                if not f.done():
+                                    f.cancel()
+                            console.print(f"[red]Error:[/red] Stopping due to error. Use --skip-errors to continue.")
+                            # Print summary before exiting
+                            _print_summary(success, failed, skipped, total_chunks, namespace)
+                            ctx.exit(1)
+
+                    progress.advance(task)
+    else:
+        # Sequential processing
+        with StacheAPI(config) as client:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                task = progress.add_task("Ingesting...", total=len(files))
+
+                for filepath in files:
+                    progress.update(task, description=f"Processing {filepath.name}")
+
+                    result = ingest_file(
+                        client, registry, filepath, namespace,
+                        chunking_strategy if chunking_strategy != "auto" else "recursive",
+                        metadata, prepend_keys
+                    )
+
+                    # Print message from result
+                    if 'message' in result:
+                        console.print(result['message'])
+
+                    if result['status'] == 'success':
+                        success += 1
+                        total_chunks += result.get('chunks', 0)
+                    elif result['status'] == 'skipped':
+                        skipped += 1
+                    elif result['status'] == 'error':
+                        failed += 1
+                        if not skip_errors:
+                            console.print(f"[red]Error:[/red] Stopping due to error. Use --skip-errors to continue.")
+                            # Print summary before exiting
+                            _print_summary(success, failed, skipped, total_chunks, namespace)
+                            ctx.exit(1)
+
+                    progress.advance(task)
+
+    # Summary - always print
+    _print_summary(success, failed, skipped, total_chunks, namespace)
+
+    # Exit with appropriate code
+    if failed > 0:
+        ctx.exit(1)
+    else:
+        ctx.exit(0)

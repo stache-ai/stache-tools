@@ -90,19 +90,23 @@ class TestLambdaTransportBuildEvent:
         """Test building GET event."""
         event = transport._build_event("GET", "/api/namespaces", params={"limit": 10})
 
-        assert event["httpMethod"] == "GET"
-        assert event["path"] == "/api/namespaces"
+        # API Gateway HTTP API v2 format
+        assert event["version"] == "2.0"
+        assert event["requestContext"]["http"]["method"] == "GET"
+        assert event["rawPath"] == "/api/namespaces"
         assert event["body"] is None
         assert event["queryStringParameters"] == {"limit": 10}
-        assert event["headers"]["Content-Type"] == "application/json"
+        assert event["headers"]["content-type"] == "application/json"
 
     def test_build_post_event(self, transport):
         """Test building POST event with body."""
         body = {"query": "test", "top_k": 10}
         event = transport._build_event("POST", "/api/query", body=body)
 
-        assert event["httpMethod"] == "POST"
-        assert event["path"] == "/api/query"
+        # API Gateway HTTP API v2 format
+        assert event["version"] == "2.0"
+        assert event["requestContext"]["http"]["method"] == "POST"
+        assert event["rawPath"] == "/api/query"
         assert event["body"] == json.dumps(body)
         assert event["queryStringParameters"] is None
 
