@@ -105,6 +105,25 @@ class StacheTransport(Protocol):
         """
         ...
 
+    def patch(self, path: str, params: dict | None = None, data: dict | None = None) -> dict[str, Any]:
+        """Execute an HTTP PATCH equivalent request.
+
+        Args:
+            path: API path (e.g., "/api/documents/doc-123")
+            params: Optional query parameters
+            data: Optional JSON body data
+
+        Returns:
+            Parsed JSON response as a dictionary
+
+        Raises:
+            StacheConnectionError: If unable to connect
+            StacheAuthError: If authentication fails (401/403)
+            StacheNotFoundError: If resource not found (404)
+            StacheAPIError: For other HTTP errors
+        """
+        ...
+
     def close(self) -> None:
         """Clean up resources (connection pools, clients, etc.).
 

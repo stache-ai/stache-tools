@@ -66,7 +66,7 @@ class StacheConfig(BaseSettings):
         description="AWS region for Lambda invocation",
     )
     lambda_timeout: float = Field(
-        default=60.0,
+        default=300.0,
         ge=1.0,
         le=900.0,  # Lambda max is 15 minutes
         description="Read timeout for Lambda invocations (seconds)",

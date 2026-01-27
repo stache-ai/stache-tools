@@ -57,15 +57,28 @@ class LoaderRegistry:
         from .pdf import BasicPDFLoader
         from .text import MarkdownLoader, TextLoader
 
-        self._loaders.extend([
+        builtin = [
             TextLoader(),
             MarkdownLoader(),
             BasicPDFLoader(),
             DocxLoader(),
             PptxLoader(),
             EpubLoader(),
-        ])
-        logger.debug(f"Loaded {len(self._loaders)} built-in loaders")
+        ]
+
+        # Try loading optional OCR loaders
+        try:
+            from .ocr import OcrPdfLoader, OcrImageLoader
+            builtin.extend([
+                OcrPdfLoader(),
+                OcrImageLoader(),
+            ])
+            logger.debug("Loaded OCR loaders (stache-ai-ocr installed)")
+        except ImportError:
+            logger.debug("OCR loaders not available (install stache-tools[ocr])")
+
+        self._loaders.extend(builtin)
+        logger.debug(f"Loaded {len(builtin)} built-in loaders")
 
     def _load_plugins(self) -> None:
         """Discover and load plugin loaders."""

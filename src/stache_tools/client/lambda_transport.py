@@ -372,3 +372,17 @@ class LambdaTransport:
             Parsed JSON response
         """
         return self._invoke("DELETE", path, params=params)
+
+    @_retry_lambda
+    def patch(self, path: str, params: dict | None = None, data: dict | None = None) -> dict[str, Any]:
+        """Execute PATCH request with retry.
+
+        Args:
+            path: API path (e.g., "/api/documents/doc-123")
+            params: Optional query parameters
+            data: Optional JSON body
+
+        Returns:
+            Parsed JSON response
+        """
+        return self._invoke("PATCH", path, params=params, body=data)

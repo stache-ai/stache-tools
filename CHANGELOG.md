@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-01-15
+
+### Added
+
+- **OCR support** - Integrated OCR loaders (merged from stache-tools-ocr)
+  - Install with `pip install stache-tools[ocr]`
+  - Supports scanned PDFs (via stache-ai-ocr)
+  - Supports image OCR (JPG, PNG, TIFF, etc. via pytesseract)
+  - Falls back gracefully if OCR dependencies not installed
+  - Auto-detects if stache-ai-ocr is installed and loads loaders
+
+### Changed
+
+- Document loaders (DOCX, PPTX, EPUB) now built-in (merged from stache-tools-documents)
+- Simplified installation - no need for separate plugin packages
+
+### Deprecated
+
+- **stache-tools-ocr** package - functionality merged into stache-tools[ocr]
+- **stache-tools-documents** package - functionality merged into stache-tools core
+
 ## [0.1.1] - 2026-01-11
 
 ### Added

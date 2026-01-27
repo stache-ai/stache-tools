@@ -90,6 +90,44 @@ def get_document(doc_id: str, namespace: str, as_json: bool):
                 console.print(f"\n[dim]... ({len(text) - 2000} more characters)[/dim]")
 
 
+@doc.command("update")
+@click.argument("doc_id")
+@click.option("--namespace", "-n", default="default", help="Current namespace containing the document")
+@click.option("--new-namespace", help="Migrate document to new namespace")
+@click.option("--filename", help="Update filename")
+@click.option("--metadata", help="Custom metadata as JSON (replaces existing)")
+def update_document(doc_id: str, namespace: str, new_namespace: str | None, filename: str | None, metadata: str | None):
+    """Update document metadata."""
+    updates = {}
+
+    if new_namespace:
+        updates["namespace"] = new_namespace
+
+    if filename:
+        updates["filename"] = filename
+
+    if metadata:
+        try:
+            updates["metadata"] = json.loads(metadata)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON in --metadata:[/red] {e}")
+            raise click.Abort()
+
+    if not updates:
+        console.print("[yellow]No updates specified. Use --new-namespace, --filename, or --metadata[/yellow]")
+        raise click.Abort()
+
+    with StacheAPI() as api:
+        result = api.update_document(doc_id, namespace, updates)
+
+        chunks = result.get("updated_chunks", 0)
+        new_ns = result.get("namespace", namespace)
+
+        console.print(f"[green]Updated document {doc_id}[/green]")
+        console.print(f"  Chunks updated: {chunks}")
+        console.print(f"  Namespace: {new_ns}")
+
+
 @doc.command("delete")
 @click.argument("doc_id")
 @click.option("--namespace", "-n", default="default", help="Namespace containing the document")

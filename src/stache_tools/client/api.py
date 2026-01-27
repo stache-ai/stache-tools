@@ -276,6 +276,28 @@ class StacheAPI:
         """
         return self._client.delete(f"/api/documents/id/{doc_id}", {"namespace": namespace})
 
+    def update_document(
+        self,
+        doc_id: str,
+        namespace: str,
+        updates: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Update document metadata.
+
+        Args:
+            doc_id: Document identifier
+            namespace: Current namespace
+            updates: Fields to update (namespace, filename, metadata, headings)
+
+        Returns:
+            Update result with updated_chunks count
+        """
+        return self._client.patch(
+            f"/api/documents/{doc_id}",
+            params={"current_namespace": namespace},
+            data=updates
+        )
+
     def health(self, include_auth: bool = False) -> dict[str, Any]:
         """Check API health.
 

@@ -41,8 +41,8 @@ def validate_id(id_value: str, id_type: str = "ID") -> str | None:
 
 
 def get_tool_definitions() -> list[Tool]:
-    """Return MCP tool definitions."""
-    return [
+    """Return MCP tool definitions including enterprise tools if available."""
+    tools = [
         Tool(
             name="search",
             description="Semantic search in Stache knowledge base. Returns relevant text chunks ranked by relevance.",
@@ -123,6 +123,21 @@ def get_tool_definitions() -> list[Tool]:
             },
         ),
         Tool(
+            name="update_document",
+            description="Update document metadata (namespace, filename, custom metadata)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "doc_id": {"type": "string", "description": "Document UUID to update"},
+                    "namespace": {"type": "string", "description": "Current namespace (default 'default')"},
+                    "new_namespace": {"type": "string", "description": "New namespace to migrate to (optional)"},
+                    "new_filename": {"type": "string", "description": "New filename (optional)"},
+                    "metadata": {"type": "object", "description": "Custom metadata dict to replace existing (optional)"},
+                },
+                "required": ["doc_id"],
+            },
+        ),
+        Tool(
             name="create_namespace",
             description="Create a new namespace.",
             inputSchema={
@@ -174,6 +189,16 @@ def get_tool_definitions() -> list[Tool]:
         ),
     ]
 
+    # Add enterprise tools if available
+    try:
+        from stache_tools.mcp.enterprise import get_enterprise_tool_definitions
+        tools.extend(get_enterprise_tool_definitions())
+        logger.debug("Enterprise tools loaded")
+    except ImportError:
+        logger.debug("Enterprise tools not available")
+
+    return tools
+
 
 class ToolHandler:
     """Handles MCP tool execution.
@@ -196,11 +221,31 @@ class ToolHandler:
         try:
             handler = getattr(self, f"_handle_{name}", None)
             if not handler:
+                # Try enterprise tools if available
+                enterprise_result = await self._handle_enterprise_tool(name, arguments)
+                if enterprise_result is not None:
+                    return enterprise_result
+
                 return self._error(f"Unknown tool: {name}")
             return await handler(arguments)
         except Exception as e:
             logger.exception(f"Tool {name} failed")
             return self._error(str(e))
+
+    async def _handle_enterprise_tool(self, name: str, arguments: dict[str, Any]) -> list[TextContent] | None:
+        """Route to enterprise tool handlers if available.
+
+        Returns:
+            list[TextContent] if enterprise tool found and executed, None otherwise
+        """
+        try:
+            from stache_tools.mcp.enterprise import handle_enterprise_tool
+        except ImportError:
+            # Enterprise tools not available
+            logger.debug(f"Enterprise tools not available for: {name}")
+            return None
+
+        return await handle_enterprise_tool(name, arguments)
 
     def _error(self, message: str) -> list[TextContent]:
         return [TextContent(type="text", text=f"Error: {message}")]
@@ -307,6 +352,45 @@ class ToolHandler:
         if result.get("success"):
             return [TextContent(type="text", text=f"Deleted document {doc_id}")]
         return self._error(result.get("error", "Delete failed"))
+
+    async def _handle_update_document(self, args: dict) -> list[TextContent]:
+        doc_id = args.get("doc_id", "").strip()
+        if not doc_id:
+            return self._error("doc_id is required")
+
+        # Validate document ID
+        error = validate_id(doc_id, "Document ID")
+        if error:
+            return self._error(error)
+
+        # Validate namespace
+        namespace = args.get("namespace", "default").strip()
+        error = validate_id(namespace, "Namespace")
+        if error:
+            return self._error(error)
+
+        # Build updates dict
+        updates = {}
+        if args.get("new_namespace"):
+            new_ns = args["new_namespace"].strip()
+            error = validate_id(new_ns, "New namespace")
+            if error:
+                return self._error(error)
+            updates["namespace"] = new_ns
+
+        if args.get("new_filename"):
+            updates["filename"] = args["new_filename"].strip()
+
+        if args.get("metadata"):
+            updates["metadata"] = args["metadata"]
+
+        if not updates:
+            return self._error("At least one update field required (new_namespace, new_filename, metadata)")
+
+        result = await asyncio.to_thread(self.api.update_document, doc_id=doc_id, namespace=namespace, updates=updates)
+        chunks = result.get("updated_chunks", 0)
+        new_ns = result.get("namespace", namespace)
+        return [TextContent(type="text", text=f"Updated document {doc_id} ({chunks} chunks) in namespace {new_ns}")]
 
     async def _handle_create_namespace(self, args: dict) -> list[TextContent]:
         ns_id = args.get("id", "").strip()

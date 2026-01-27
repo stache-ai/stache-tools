@@ -29,8 +29,12 @@ def ingest_file(
     chunking_strategy: str,
     metadata: dict | None,
     prepend_metadata: list[str] | None,
+    base_path: Path | None = None,
 ) -> dict:
     """Ingest a single file.
+
+    Args:
+        base_path: Optional base path to strip from source_path for portable identifiers
 
     Returns:
         dict with keys:
@@ -64,9 +68,22 @@ def ingest_file(
                 'message': f"[yellow]○[/yellow] {filepath.name} (empty)"
             }
 
+        # Compute source_path (relative to base_path if provided)
+        if base_path:
+            try:
+                # Get absolute paths and compute relative
+                abs_filepath = filepath.resolve()
+                abs_basepath = base_path.resolve()
+                source_path = str(abs_filepath.relative_to(abs_basepath))
+            except ValueError:
+                # filepath not under base_path, use full path
+                source_path = str(filepath)
+        else:
+            source_path = filepath.name
+
         # Merge metadata
         file_metadata = doc.metadata.copy()
-        file_metadata["source_path"] = filepath.name
+        file_metadata["source_path"] = source_path
         file_metadata["filename"] = filepath.name
         if metadata:
             file_metadata.update(metadata)
@@ -110,14 +127,14 @@ def ingest_file_worker(args: tuple) -> dict:
     OAuth token cache is shared at module level (thread-safe).
     LoaderRegistry is singleton (thread-safe).
     """
-    filepath, config, namespace, chunking_strategy, metadata, prepend_keys = args
+    filepath, config, namespace, chunking_strategy, metadata, prepend_keys, base_path = args
 
     # Create fresh client per file (HTTPTransport has mutable state)
     with StacheAPI(config) as client:
         registry = LoaderRegistry()
         return ingest_file(
             client, registry, filepath, namespace,
-            chunking_strategy, metadata, prepend_keys
+            chunking_strategy, metadata, prepend_keys, base_path
         )
 
 
@@ -176,6 +193,8 @@ def collect_files(path: Path, pattern: str, recursive: bool) -> list[Path]:
 )
 @click.option("-t", "--text", "text_input", help="Ingest text directly instead of a file")
 @click.option("--stdin", is_flag=True, help="Read text from stdin")
+@click.option("--base-path", type=click.Path(exists=True, path_type=Path),
+              help="Base path to strip from source_path for portable identifiers (e.g., /home/user/projects)")
 @click.option("--dry-run", is_flag=True, help="Show what would be ingested without actually doing it")
 @click.option('-y', '--yes', is_flag=True, help='Skip confirmation prompt')
 @click.option('--skip-errors', is_flag=True, help='Continue on errors instead of stopping')
@@ -194,6 +213,7 @@ def ingest(
     prepend_metadata: str | None,
     text_input: str | None,
     stdin: bool,
+    base_path: Path | None,
     dry_run: bool,
     yes: bool,
     skip_errors: bool,
@@ -315,7 +335,7 @@ def ingest(
         file_args = [
             (fp, config, namespace,
              chunking_strategy if chunking_strategy != "auto" else "recursive",
-             metadata, prepend_keys)
+             metadata, prepend_keys, base_path)
             for fp in files
         ]
 
@@ -389,7 +409,7 @@ def ingest(
                     result = ingest_file(
                         client, registry, filepath, namespace,
                         chunking_strategy if chunking_strategy != "auto" else "recursive",
-                        metadata, prepend_keys
+                        metadata, prepend_keys, base_path
                     )
 
                     # Print message from result

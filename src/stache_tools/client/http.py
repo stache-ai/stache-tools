@@ -232,6 +232,26 @@ class HTTPTransport:
         except httpx.TimeoutException as e:
             raise StacheConnectionError(f"Request timeout to {self.config.api_url}: {e}")
 
+    @_retry_http
+    def patch(self, path: str, params: dict | None = None, data: dict | None = None) -> dict[str, Any]:
+        """Execute PATCH request with retry.
+
+        Args:
+            path: API path (e.g., "/api/documents/doc-123")
+            params: Optional query parameters
+            data: Optional JSON body
+
+        Returns:
+            Parsed JSON response
+        """
+        try:
+            response = self.client.patch(path, params=params, json=data)
+            return self._handle_response(response)
+        except httpx.ConnectError as e:
+            raise StacheConnectionError(f"Cannot connect to {self.config.api_url}: {e}")
+        except httpx.TimeoutException as e:
+            raise StacheConnectionError(f"Request timeout to {self.config.api_url}: {e}")
+
 
 # Backwards compatibility alias
 StacheHTTPClient = HTTPTransport

@@ -9,6 +9,15 @@ from .pdf import BasicPDFLoader
 from .registry import LoaderRegistry
 from .text import MarkdownLoader, TextLoader
 
+# Optional OCR loaders (require stache-ai-ocr extra)
+try:
+    from .ocr import OcrPdfLoader, OcrImageLoader
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
+    OcrPdfLoader = None  # type: ignore
+    OcrImageLoader = None  # type: ignore
+
 
 def load_document(file_or_path: str | Path | BinaryIO, filename: str | None = None) -> LoadedDocument:
     """Load document using appropriate loader."""
@@ -41,7 +50,10 @@ __all__ = [
     "LoadedDocument",
     "LoaderRegistry",
     "MarkdownLoader",
+    "OcrImageLoader",
+    "OcrPdfLoader",
     "PptxLoader",
     "TextLoader",
     "load_document",
+    "OCR_AVAILABLE",
 ]

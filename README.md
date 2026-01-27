@@ -68,12 +68,13 @@ Restart Claude Code/Desktop to load the MCP server.
 | `search` | Semantic search in your knowledge base |
 | `ingest_text` | Add text content |
 | `list_namespaces` | List all namespaces |
-| `list_documents` | List documents |
+| `list_documents` | List documents (optionally filtered by namespace) |
 | `get_document` | Get document by ID |
+| `update_document` | Update document metadata (filename, namespace, custom metadata) |
 | `delete_document` | Delete document |
 | `create_namespace` | Create namespace |
 | `get_namespace` | Get namespace details |
-| `update_namespace` | Update namespace |
+| `update_namespace` | Update namespace properties |
 | `delete_namespace` | Delete namespace |
 
 ## CLI Usage
@@ -100,6 +101,9 @@ stache namespace create mba/finance --name "Finance Notes"
 # Documents
 stache doc list -n research
 stache doc get DOC_ID
+stache doc update DOC_ID --filename "new-name.pdf"
+stache doc update DOC_ID --new-namespace archive
+stache doc update DOC_ID --metadata '{"author": "Jane Doe", "year": 2026}'
 stache doc delete DOC_ID
 ```
 
@@ -146,6 +150,16 @@ with StacheAPI() as api:
     results = api.search("query", namespace="examples")
     for source in results.get("sources", []):
         print(f"{source['score']:.3f}: {source['content'][:100]}")
+
+    # Document management
+    docs = api.list_documents(namespace="examples")
+
+    # Update document metadata
+    api.update_document(
+        doc_id="abc-123",
+        namespace="default",
+        updates={"filename": "renamed.pdf", "metadata": {"year": 2026}}
+    )
 ```
 
 ## Documentation

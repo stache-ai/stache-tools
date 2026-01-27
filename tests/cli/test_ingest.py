@@ -484,7 +484,7 @@ class TestIngestWorker:
                 with patch("builtins.open", create=True) as mock_open:
                     mock_open.return_value.__enter__.return_value.read.return_value = b"Content"
 
-                    args = (test_file, config, "test-ns", "recursive", None, None)
+                    args = (test_file, config, "test-ns", "recursive", None, None, None)
                     result = ingest_file_worker(args)
 
                     # Should create fresh client
