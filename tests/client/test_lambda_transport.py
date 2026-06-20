@@ -95,8 +95,32 @@ class TestLambdaTransportBuildEvent:
         assert event["requestContext"]["http"]["method"] == "GET"
         assert event["rawPath"] == "/api/namespaces"
         assert event["body"] is None
-        assert event["queryStringParameters"] == {"limit": 10}
+        # v2 queryStringParameters values are always strings
+        assert event["queryStringParameters"] == {"limit": "10"}
+        assert event["rawQueryString"] == "limit=10"
         assert event["headers"]["content-type"] == "application/json"
+
+    def test_build_get_event_url_encodes_special_chars(self, transport):
+        """Params with &, =, spaces, or JSON tokens must be percent-encoded
+        so rawQueryString parsing isn't corrupted."""
+        from urllib.parse import parse_qs
+
+        next_key = '{"id": "a&b=c"}'
+        event = transport._build_event(
+            "GET", "/api/documents",
+            params={"namespace": "my docs", "next_key": next_key, "skip": None},
+        )
+
+        # Round-trips back to the original values
+        parsed = parse_qs(event["rawQueryString"])
+        assert parsed["namespace"] == ["my docs"]
+        assert parsed["next_key"] == [next_key]
+        # None-valued params are dropped
+        assert "skip" not in event["rawQueryString"]
+        assert "skip" not in event["queryStringParameters"]
+        # Raw string is actually encoded (no bare special chars)
+        assert " " not in event["rawQueryString"]
+        assert "{" not in event["rawQueryString"]
 
     def test_build_post_event(self, transport):
         """Test building POST event with body."""

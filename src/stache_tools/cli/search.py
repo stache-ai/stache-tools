@@ -38,8 +38,7 @@ def search(
         try:
             filter_dict = json.loads(filter_json)
         except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid filter JSON: {e}[/red]")
-            return
+            raise click.ClickException(f"Invalid filter JSON: {e}")
 
     with StacheAPI() as api:
         result = api.search(

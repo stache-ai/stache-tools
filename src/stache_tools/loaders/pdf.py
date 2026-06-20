@@ -20,35 +20,35 @@ class BasicPDFLoader(DocumentLoader):
 
     def load(self, file: BinaryIO, filename: str) -> LoadedDocument:
         # Suppress pypdf warnings about malformed PDFs (they usually still extract fine)
-        # These warnings like "Ignoring wrong pointing object" are common in PDFs
-        # converted from other formats or with complex layouts
-        pypdf_logger = logging.getLogger('pypdf._reader')
+        # These warnings like "Ignoring wrong pointing object" or "Could not get FontBBox"
+        # are common in PDFs converted from other formats or with complex layouts
+        pypdf_logger = logging.getLogger('pypdf')
         original_level = pypdf_logger.level
         pypdf_logger.setLevel(logging.ERROR)
 
         try:
             reader = PdfReader(file)
+
+            text_parts = []
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    text_parts.append(text)
+
+            metadata = {"filename": filename, "type": "pdf"}
+
+            if not text_parts:
+                logger.warning(f"No text extracted from {filename} - may be scanned PDF")
+                metadata["extraction_failed"] = True
+            if reader.metadata:
+                if reader.metadata.title:
+                    metadata["title"] = reader.metadata.title
+                if reader.metadata.author:
+                    metadata["author"] = reader.metadata.author
+
+            metadata["page_count"] = len(reader.pages)
         finally:
             pypdf_logger.setLevel(original_level)
-
-        text_parts = []
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                text_parts.append(text)
-
-        metadata = {"filename": filename, "type": "pdf"}
-
-        if not text_parts:
-            logger.warning(f"No text extracted from {filename} - may be scanned PDF")
-            metadata["extraction_failed"] = True
-        if reader.metadata:
-            if reader.metadata.title:
-                metadata["title"] = reader.metadata.title
-            if reader.metadata.author:
-                metadata["author"] = reader.metadata.author
-
-        metadata["page_count"] = len(reader.pages)
 
         return LoadedDocument(
             text="\n\n".join(text_parts),

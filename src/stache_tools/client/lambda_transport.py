@@ -11,6 +11,7 @@ import json
 import logging
 import time
 from typing import Any
+from urllib.parse import urlencode
 
 from .config import StacheConfig
 from .exceptions import (
@@ -173,17 +174,22 @@ class LambdaTransport:
         Returns:
             Event dictionary in API Gateway HTTP API v2 format
         """
-        # Build query string from params
+        # Build query string from params. Must be URL-encoded: values like
+        # JSON next_key tokens or names with spaces/&/= corrupt parsing otherwise.
         query_string = ""
+        encoded_params = None
         if params:
-            query_string = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
+            filtered = {k: v for k, v in params.items() if v is not None}
+            query_string = urlencode(filtered)
+            # queryStringParameters values must be strings in the v2 event
+            encoded_params = {k: str(v) for k, v in filtered.items()}
 
         return {
             "version": "2.0",
             "rawPath": path,
             "rawQueryString": query_string,
             "headers": {"content-type": "application/json"},
-            "queryStringParameters": params,
+            "queryStringParameters": encoded_params,
             "body": json.dumps(body) if body else None,
             "isBase64Encoded": False,
             "requestContext": {

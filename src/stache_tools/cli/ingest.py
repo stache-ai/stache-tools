@@ -58,6 +58,18 @@ def ingest_file(
         with open(filepath, "rb") as f:
             doc = loader.load(f, filepath.name)
 
+        # A loader that failed extraction (e.g. OCR with no tesseract) returns
+        # empty text plus this marker; surface it as an error, not a silent skip
+        if doc.metadata.get("extraction_failed"):
+            reason = doc.metadata.get("ocr_error", "extraction failed")
+            return {
+                'status': 'error',
+                'reason': reason,
+                'filepath': filepath,
+                'chunks': 0,
+                'message': f"[red]✗[/red] {filepath.name}: {reason}"
+            }
+
         # Check for empty content
         if not doc.text.strip():
             return {

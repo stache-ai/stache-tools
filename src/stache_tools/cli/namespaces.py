@@ -92,8 +92,7 @@ def create_namespace(ns_id: str, name: str, description: str, parent: str | None
         try:
             meta_dict = json.loads(metadata)
         except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid metadata JSON: {e}[/red]")
-            return
+            raise click.ClickException(f"Invalid metadata JSON: {e}")
 
     with StacheAPI() as api:
         api.create_namespace(id=ns_id, name=name, description=description, parent_id=parent, metadata=meta_dict)
@@ -113,8 +112,7 @@ def update_namespace(ns_id: str, name: str | None, description: str | None, meta
         try:
             meta_dict = json.loads(metadata)
         except json.JSONDecodeError as e:
-            console.print(f"[red]Invalid metadata JSON: {e}[/red]")
-            return
+            raise click.ClickException(f"Invalid metadata JSON: {e}")
 
     if not any([name, description, metadata]):
         console.print("[yellow]Nothing to update. Provide --name, --description, or --metadata[/yellow]")
@@ -127,21 +125,33 @@ def update_namespace(ns_id: str, name: str | None, description: str | None, meta
 
 @namespace.command("delete")
 @click.argument("ns_id")
-@click.option("--cascade", is_flag=True, help="Delete all documents in namespace")
+@click.option("--cascade", is_flag=True, help="Also delete child namespaces")
+@click.option(
+    "--delete-documents",
+    is_flag=True,
+    help="Also permanently delete all documents in the namespace from the vector DB",
+)
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
-def delete_namespace(ns_id: str, cascade: bool, yes: bool):
-    """Delete a namespace."""
+def delete_namespace(ns_id: str, cascade: bool, delete_documents: bool, yes: bool):
+    """Delete a namespace.
+
+    By default only the namespace metadata is deleted; documents are kept.
+    Use --delete-documents to also remove the documents themselves.
+    """
     if not yes:
+        what = f"namespace '{ns_id}'"
         if cascade:
-            click.confirm(f"Delete namespace '{ns_id}' and ALL its documents?", abort=True)
-        else:
-            click.confirm(f"Delete namespace '{ns_id}'?", abort=True)
+            what += " and its child namespaces"
+        if delete_documents:
+            what += " and PERMANENTLY delete all documents in it"
+        click.confirm(f"Delete {what}?", abort=True)
 
     with StacheAPI() as api:
-        result = api.delete_namespace(id=ns_id, cascade=cascade)
-        if cascade:
+        result = api.delete_namespace(
+            id=ns_id, cascade=cascade, delete_documents=delete_documents
+        )
+        if delete_documents:
             chunks = result.get("chunks_deleted", 0)
-            docs = result.get("documents_deleted", 0)
-            console.print(f"[green]Deleted namespace:[/green] {ns_id} ({docs} docs, {chunks} chunks)")
+            console.print(f"[green]Deleted namespace:[/green] {ns_id} ({chunks} chunks deleted)")
         else:
-            console.print(f"[green]Deleted namespace:[/green] {ns_id}")
+            console.print(f"[green]Deleted namespace:[/green] {ns_id} (documents kept)")

@@ -73,17 +73,28 @@ def format_document_list(result: dict[str, Any]) -> str:
 
 
 def format_document(result: dict[str, Any]) -> str:
-    """Format document content."""
+    """Format document metadata and summary.
+
+    The get_document endpoint returns metadata only (no chunk text), so the
+    body is the AI summary; full text requires the chunks endpoint.
+    """
     filename = result.get("filename", "Untitled")
     doc_id = result.get("doc_id", "")
     namespace = result.get("namespace", "default")
-    text = result.get("reconstructed_text", result.get("text", ""))
+    text = result.get("reconstructed_text") or result.get("text")
 
     lines = [
         f"# {filename}",
-        f"**ID:** `{doc_id}` | **Namespace:** {namespace}",
+        f"**ID:** `{doc_id}` | **Namespace:** {namespace} | **Chunks:** {result.get('chunk_count', '?')}",
         "---",
-        text,
     ]
+    if text:
+        lines.append(text)
+    elif summary := result.get("summary"):
+        lines.append(f"**Summary:** {summary}")
+    else:
+        lines.append("(no summary available; document content is stored as chunks)")
+    if headings := result.get("headings"):
+        lines.append("\n**Headings:** " + "; ".join(str(h) for h in headings[:20]))
 
     return "\n".join(lines)

@@ -217,17 +217,25 @@ class StacheAPI:
             data["metadata"] = metadata
         return self._client.put(f"/api/namespaces/{id}", data)
 
-    def delete_namespace(self, id: str, cascade: bool = False) -> dict[str, Any]:
+    def delete_namespace(
+        self, id: str, cascade: bool = False, delete_documents: bool = False
+    ) -> dict[str, Any]:
         """Delete a namespace.
 
         Args:
             id: Namespace identifier
-            cascade: If True, delete all documents in namespace
+            cascade: If True, also delete child namespaces
+            delete_documents: If True, also delete all documents in the
+                namespace from the vector DB. The server default is True,
+                so this must always be sent explicitly.
 
         Returns:
             Deletion result
         """
-        return self._client.delete(f"/api/namespaces/{id}", {"cascade": cascade})
+        return self._client.delete(
+            f"/api/namespaces/{id}",
+            {"cascade": cascade, "delete_documents": delete_documents},
+        )
 
     def list_documents(
         self,

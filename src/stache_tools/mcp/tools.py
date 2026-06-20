@@ -100,7 +100,7 @@ def get_tool_definitions() -> list[Tool]:
         ),
         Tool(
             name="get_document",
-            description="Get document content by ID.",
+            description="Get document metadata and AI summary by ID (full text is stored as chunks; use search to retrieve content).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -177,21 +177,26 @@ def get_tool_definitions() -> list[Tool]:
         ),
         Tool(
             name="delete_namespace",
-            description="Delete a namespace.",
+            description="Delete a namespace. Documents are kept unless delete_documents is true.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "string", "description": "Namespace ID"},
                     "cascade": {"type": "boolean", "description": "Delete children too", "default": False},
+                    "delete_documents": {
+                        "type": "boolean",
+                        "description": "Also permanently delete all documents in the namespace",
+                        "default": False,
+                    },
                 },
                 "required": ["id"],
             },
         ),
     ]
 
-    # Add enterprise tools if available
+    # Add enterprise tools if the optional enterprise package is installed
     try:
-        from stache_tools.mcp.enterprise import get_enterprise_tool_definitions
+        from stache_tools_enterprise import get_enterprise_tool_definitions
         tools.extend(get_enterprise_tool_definitions())
         logger.debug("Enterprise tools loaded")
     except ImportError:
@@ -239,7 +244,7 @@ class ToolHandler:
             list[TextContent] if enterprise tool found and executed, None otherwise
         """
         try:
-            from stache_tools.mcp.enterprise import handle_enterprise_tool
+            from stache_tools_enterprise import handle_enterprise_tool
         except ImportError:
             # Enterprise tools not available
             logger.debug(f"Enterprise tools not available for: {name}")
@@ -349,8 +354,10 @@ class ToolHandler:
             return self._error(error)
 
         result = await asyncio.to_thread(self.api.delete_document, doc_id=doc_id, namespace=namespace)
-        if result.get("success"):
-            return [TextContent(type="text", text=f"Deleted document {doc_id}")]
+        # Server returns {"status": "deleted", ...}; failures raise HTTP errors
+        if result.get("status") == "deleted" or result.get("success"):
+            message = result.get("message", "")
+            return [TextContent(type="text", text=f"Deleted document {doc_id}. {message}".strip())]
         return self._error(result.get("error", "Delete failed"))
 
     async def _handle_update_document(self, args: dict) -> list[TextContent]:
@@ -457,7 +464,16 @@ class ToolHandler:
         if error:
             return self._error(error)
 
-        result = await asyncio.to_thread(self.api.delete_namespace, id=ns_id, cascade=args.get("cascade", False))
+        delete_documents = args.get("delete_documents", False)
+        result = await asyncio.to_thread(
+            self.api.delete_namespace,
+            id=ns_id,
+            cascade=args.get("cascade", False),
+            delete_documents=delete_documents,
+        )
         if result.get("success"):
-            return [TextContent(type="text", text=f"Deleted namespace: {ns_id}")]
+            if delete_documents:
+                chunks = result.get("chunks_deleted", 0)
+                return [TextContent(type="text", text=f"Deleted namespace: {ns_id} ({chunks} chunks deleted)")]
+            return [TextContent(type="text", text=f"Deleted namespace: {ns_id} (documents kept)")]
         return self._error(result.get("error", "Delete failed"))

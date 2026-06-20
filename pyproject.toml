@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "stache-tools"
-version = "0.1.2"
+version = "0.1.3"
 description = "Utilities and tools for the Stache RAG system"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -42,6 +42,10 @@ ocr = [
     "stache-ai-ocr>=0.1.2",
     "pytesseract>=0.3.10",
     "pillow>=10.0.0",
+]
+batch = [
+    "cohere>=5.0,<6.0",
+    "boto3>=1.34",
 ]
 lambda = [
     "boto3>=1.26.0",

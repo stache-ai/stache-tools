@@ -81,13 +81,21 @@ def get_document(doc_id: str, namespace: str, as_json: bool):
         )
         console.print(Panel(info, title=f"[cyan]{result.get('filename', 'Untitled')}[/cyan]"))
 
-        # Document content
-        text = result.get("reconstructed_text", result.get("text", ""))
+        # The metadata endpoint returns no chunk text; show the AI summary
+        # instead of silently rendering nothing
+        text = result.get("reconstructed_text") or result.get("text")
         if text:
             console.print("\n[bold]Content:[/bold]")
             console.print(text[:2000])
             if len(text) > 2000:
                 console.print(f"\n[dim]... ({len(text) - 2000} more characters)[/dim]")
+        elif summary := result.get("summary"):
+            console.print("\n[bold]Summary:[/bold]")
+            console.print(summary)
+        if headings := result.get("headings"):
+            console.print("\n[bold]Headings:[/bold]")
+            for h in headings[:20]:
+                console.print(f"  - {h}")
 
 
 @doc.command("update")
@@ -139,8 +147,10 @@ def delete_document(doc_id: str, namespace: str, yes: bool):
 
     with StacheAPI() as api:
         result = api.delete_document(doc_id, namespace)
-        if result.get("success"):
-            chunks = result.get("chunks_deleted", 0)
-            console.print(f"[green]Deleted document ({chunks} chunks)[/green]")
+        # Server returns {"status": "deleted", ...}; failures raise HTTP errors
+        if result.get("status") == "deleted" or result.get("success"):
+            console.print(f"[green]Deleted document {doc_id}[/green]")
+            if message := result.get("message"):
+                console.print(f"  {message}")
         else:
-            console.print(f"[red]Error:[/red] {result.get('error')}")
+            raise click.ClickException(str(result.get("error", "Delete failed")))

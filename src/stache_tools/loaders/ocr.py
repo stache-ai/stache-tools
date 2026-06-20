@@ -121,7 +121,8 @@ class OcrImageLoader(DocumentLoader):
             )
             return LoadedDocument(
                 text="",
-                metadata={'source': filename}
+                metadata={'source': filename, 'extraction_failed': True,
+                          'ocr_error': 'pytesseract not installed'}
             )
 
         try:
@@ -152,12 +153,14 @@ class OcrImageLoader(DocumentLoader):
 
             return LoadedDocument(
                 text="",
-                metadata={'source': filename}
+                metadata={'source': filename, 'extraction_failed': True,
+                          'ocr_error': f'tesseract unavailable: {e}'}
             )
 
         except Exception as e:
             logger.warning(f"OCR error on {filename}: {e}")
             return LoadedDocument(
                 text="",
-                metadata={'source': filename}
+                metadata={'source': filename, 'extraction_failed': True,
+                          'ocr_error': str(e)}
             )
