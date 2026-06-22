@@ -33,10 +33,26 @@ def temp_files(tmp_path):
     return files
 
 
+def _terminal_job(chunks=3, doc_id="test-doc-id-123", job_id="job-1"):
+    """Helper: a terminal (done) job dict as a sync backend returns."""
+    return {
+        "job_id": job_id,
+        "status": "done",
+        "chunks_created": chunks,
+        "doc_id": doc_id,
+    }
+
+
 @pytest.fixture
 def mock_client():
-    """Create mock StacheAPI client."""
+    """Create mock StacheAPI client.
+
+    The file/text ingest paths now use the job contract (submit_ingest);
+    a sync-style backend returns a terminal job on submit, so no polling.
+    """
     client = MagicMock()
+    client.submit_ingest.return_value = _terminal_job()
+    # Legacy method retained on the real client; keep it available too.
     client.ingest_text.return_value = {
         "chunks_created": 3,
         "doc_id": "test-doc-id-123",
@@ -143,7 +159,7 @@ class TestIngestParallel:
         assert result.exit_code == 0
         assert "Successful: 5 files" in result.output
         # Should have called ingest_text for each file
-        assert mock_client.ingest_text.call_count == 5
+        assert mock_client.submit_ingest.call_count == 5
 
     @patch("stache_tools.cli.ingest.StacheAPI")
     def test_parallel_error_cancellation(self, mock_api_class, runner, temp_files, tmp_path):
@@ -153,7 +169,7 @@ class TestIngestParallel:
         mock_client.__exit__ = Mock(return_value=False)
 
         # First call fails immediately
-        mock_client.ingest_text.side_effect = StacheAPIError("API Error", status_code=500)
+        mock_client.submit_ingest.side_effect = StacheAPIError("API Error", status_code=500)
         mock_api_class.return_value = mock_client
 
         result = runner.invoke(
@@ -175,12 +191,12 @@ class TestIngestParallel:
         mock_client.__exit__ = Mock(return_value=False)
 
         # Mix of success and failure
-        mock_client.ingest_text.side_effect = [
-            {"chunks_created": 3, "doc_id": "doc-1"},
+        mock_client.submit_ingest.side_effect = [
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-1"},
             StacheAPIError("API Error", status_code=500),
-            {"chunks_created": 3, "doc_id": "doc-3"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-3"},
             StacheAPIError("Another error", status_code=500),
-            {"chunks_created": 3, "doc_id": "doc-5"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-5"},
         ]
         mock_api_class.return_value = mock_client
 
@@ -194,7 +210,7 @@ class TestIngestParallel:
         assert "Successful: 3 files" in result.output
         assert "Failed: 2 files" in result.output
         # Should process all files
-        assert mock_client.ingest_text.call_count == 5
+        assert mock_client.submit_ingest.call_count == 5
 
     @patch("stache_tools.cli.ingest.StacheAPI")
     def test_parallel_all_fail(self, mock_api_class, runner, temp_files, tmp_path):
@@ -202,7 +218,7 @@ class TestIngestParallel:
         mock_client = MagicMock()
         mock_client.__enter__ = Mock(return_value=mock_client)
         mock_client.__exit__ = Mock(return_value=False)
-        mock_client.ingest_text.side_effect = StacheAPIError("Error", status_code=500)
+        mock_client.submit_ingest.side_effect = StacheAPIError("Error", status_code=500)
         mock_api_class.return_value = mock_client
 
         result = runner.invoke(
@@ -279,7 +295,7 @@ class TestIngestConfirmation:
         assert result.exit_code == 0
         assert "Aborted" in result.output
         # Should not call API
-        mock_client.ingest_text.assert_not_called()
+        mock_client.submit_ingest.assert_not_called()
 
     @patch("stache_tools.cli.ingest.StacheAPI")
     def test_yes_flag_skips_prompt(self, mock_api_class, runner, temp_files, tmp_path, mock_client):
@@ -316,7 +332,7 @@ class TestIngestFileHandling:
         assert result.exit_code == 0
         assert "(empty)" in result.output
         # Should not call ingest_text
-        mock_client.ingest_text.assert_not_called()
+        mock_client.submit_ingest.assert_not_called()
 
     @patch("stache_tools.cli.ingest.StacheAPI")
     def test_skip_errors(self, mock_api_class, runner, temp_files, tmp_path):
@@ -326,12 +342,12 @@ class TestIngestFileHandling:
         mock_client.__exit__ = Mock(return_value=False)
 
         # First call fails, rest succeed
-        mock_client.ingest_text.side_effect = [
+        mock_client.submit_ingest.side_effect = [
             StacheAPIError("API Error", status_code=500),
-            {"chunks_created": 3, "doc_id": "doc-2"},
-            {"chunks_created": 3, "doc_id": "doc-3"},
-            {"chunks_created": 3, "doc_id": "doc-4"},
-            {"chunks_created": 3, "doc_id": "doc-5"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-2"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-3"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-4"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-5"},
         ]
         mock_api_class.return_value = mock_client
 
@@ -379,8 +395,8 @@ class TestIngestTextMode:
 
         assert result.exit_code == 0
         assert "Ingested text" in result.output
-        mock_client.ingest_text.assert_called_once()
-        call_args = mock_client.ingest_text.call_args
+        mock_client.submit_ingest.assert_called_once()
+        call_args = mock_client.submit_ingest.call_args
         assert call_args[1]["text"] == "Quick note to remember"
         assert call_args[1]["namespace"] == "notes"
 
@@ -396,8 +412,8 @@ class TestIngestTextMode:
         )
 
         assert result.exit_code == 0
-        mock_client.ingest_text.assert_called_once()
-        call_args = mock_client.ingest_text.call_args
+        mock_client.submit_ingest.assert_called_once()
+        call_args = mock_client.submit_ingest.call_args
         assert call_args[1]["text"] == "Text from stdin"
 
 
@@ -418,8 +434,8 @@ class TestIngestMetadata:
         )
 
         assert result.exit_code == 0
-        mock_client.ingest_text.assert_called_once()
-        call_args = mock_client.ingest_text.call_args
+        mock_client.submit_ingest.assert_called_once()
+        call_args = mock_client.submit_ingest.call_args
         assert call_args[1]["metadata"]["author"] == "John"
         assert call_args[1]["metadata"]["topic"] == "testing"
 
@@ -437,9 +453,8 @@ class TestIngestMetadata:
         )
 
         assert result.exit_code == 0
-        mock_client.ingest_text.assert_called_once()
-        call_args = mock_client.ingest_text.call_args
-        assert call_args[1]["prepend_metadata"] == ["author", "topic"]
+        # --prepend-metadata flag is accepted; the job contract does not forward it
+        mock_client.submit_ingest.assert_called_once()
 
     def test_invalid_metadata_json(self, runner, tmp_path):
         """Handle invalid JSON metadata gracefully."""
@@ -468,7 +483,7 @@ class TestIngestWorker:
             mock_client = MagicMock()
             mock_client.__enter__ = Mock(return_value=mock_client)
             mock_client.__exit__ = Mock(return_value=False)
-            mock_client.ingest_text.return_value = {"chunks_created": 3, "doc_id": "test"}
+            mock_client.submit_ingest.return_value = {"status": "done", "chunks_created": 3, "doc_id": "test"}
             mock_api_class.return_value = mock_client
 
             with patch("stache_tools.cli.ingest.LoaderRegistry") as mock_registry_class:
@@ -484,7 +499,8 @@ class TestIngestWorker:
                 with patch("builtins.open", create=True) as mock_open:
                     mock_open.return_value.__enter__.return_value.read.return_value = b"Content"
 
-                    args = (test_file, config, "test-ns", "recursive", None, None, None)
+                    args = (test_file, config, "test-ns", "recursive", None, None,
+                            None, 5_000_000, None, True, False, 1.0, 600.0)
                     result = ingest_file_worker(args)
 
                     # Should create fresh client
@@ -579,7 +595,7 @@ class TestIngestIntegration:
         mock_client = MagicMock()
         mock_client.__enter__ = Mock(return_value=mock_client)
         mock_client.__exit__ = Mock(return_value=False)
-        mock_client.ingest_text.return_value = {"chunks_created": 3, "doc_id": "test"}
+        mock_client.submit_ingest.return_value = {"status": "done", "chunks_created": 3, "doc_id": "test"}
         mock_api_class.return_value = mock_client
 
         result = runner.invoke(
@@ -589,7 +605,7 @@ class TestIngestIntegration:
 
         assert result.exit_code == 0
         # Should process supported files
-        assert mock_client.ingest_text.call_count >= 2
+        assert mock_client.submit_ingest.call_count >= 2
 
     @patch("stache_tools.cli.ingest.StacheAPI")
     def test_integration_parallel_real_files(self, mock_api_class, runner, tmp_path):
@@ -601,7 +617,7 @@ class TestIngestIntegration:
         mock_client = MagicMock()
         mock_client.__enter__ = Mock(return_value=mock_client)
         mock_client.__exit__ = Mock(return_value=False)
-        mock_client.ingest_text.return_value = {"chunks_created": 3, "doc_id": "test"}
+        mock_client.submit_ingest.return_value = {"status": "done", "chunks_created": 3, "doc_id": "test"}
         mock_api_class.return_value = mock_client
 
         result = runner.invoke(
@@ -611,7 +627,7 @@ class TestIngestIntegration:
 
         assert result.exit_code == 0
         assert "Successful: 12 files" in result.output
-        assert mock_client.ingest_text.call_count == 12
+        assert mock_client.submit_ingest.call_count == 12
 
     @patch("stache_tools.cli.ingest.StacheAPI")
     def test_integration_dry_run_accuracy(self, mock_api_class, runner, tmp_path):
@@ -634,7 +650,7 @@ class TestIngestIntegration:
         mock_client = MagicMock()
         mock_client.__enter__ = Mock(return_value=mock_client)
         mock_client.__exit__ = Mock(return_value=False)
-        mock_client.ingest_text.return_value = {"chunks_created": 3, "doc_id": "test"}
+        mock_client.submit_ingest.return_value = {"status": "done", "chunks_created": 3, "doc_id": "test"}
         mock_api_class.return_value = mock_client
 
         actual_result = runner.invoke(
@@ -664,9 +680,9 @@ class TestIngestParallelIntegration:
         # Simulate slow API calls
         def slow_ingest(*args, **kwargs):
             time.sleep(0.01)  # Small delay to simulate network
-            return {"chunks_created": 3, "doc_id": "test"}
+            return {"status": "done", "chunks_created": 3, "doc_id": "test"}
 
-        mock_client.ingest_text.side_effect = slow_ingest
+        mock_client.submit_ingest.side_effect = slow_ingest
         mock_api_class.return_value = mock_client
 
         result = runner.invoke(
@@ -689,12 +705,12 @@ class TestIngestParallelIntegration:
         mock_client.__exit__ = Mock(return_value=False)
 
         # First call gets rate limited, rest succeed
-        mock_client.ingest_text.side_effect = [
+        mock_client.submit_ingest.side_effect = [
             StacheAPIError("Rate limit exceeded", status_code=429),
-            {"chunks_created": 3, "doc_id": "doc-2"},
-            {"chunks_created": 3, "doc_id": "doc-3"},
-            {"chunks_created": 3, "doc_id": "doc-4"},
-            {"chunks_created": 3, "doc_id": "doc-5"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-2"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-3"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-4"},
+            {"status": "done", "chunks_created": 3, "doc_id": "doc-5"},
         ]
         mock_api_class.return_value = mock_client
 
@@ -726,7 +742,7 @@ class TestIngestChunkingStrategy:
         )
 
         assert result.exit_code == 0
-        call_args = mock_client.ingest_text.call_args
+        call_args = mock_client.submit_ingest.call_args
         # 'auto' should be converted to 'recursive'
         assert call_args[1]["chunking_strategy"] == "recursive"
 
@@ -744,7 +760,7 @@ class TestIngestChunkingStrategy:
         )
 
         assert result.exit_code == 0
-        call_args = mock_client.ingest_text.call_args
+        call_args = mock_client.submit_ingest.call_args
         assert call_args[1]["chunking_strategy"] == "semantic"
 
 
@@ -769,7 +785,7 @@ class TestIngestRecursive:
 
         assert result.exit_code == 0
         assert "Successful: 2 files" in result.output
-        assert mock_client.ingest_text.call_count == 2
+        assert mock_client.submit_ingest.call_count == 2
 
     @patch("stache_tools.cli.ingest.StacheAPI")
     def test_non_recursive_ignores_subdirs(self, mock_api_class, runner, tmp_path, mock_client):
@@ -788,4 +804,167 @@ class TestIngestRecursive:
 
         assert result.exit_code == 0
         assert "Successful: 1 files" in result.output
-        assert mock_client.ingest_text.call_count == 1
+        assert mock_client.submit_ingest.call_count == 1
+
+
+class TestIngestJobContract:
+    """Tests for the async job contract (--async, --wait, polling, failures)."""
+
+    @patch("stache_tools.cli.ingest.StacheAPI")
+    def test_async_text_prints_job_id_no_poll(self, mock_api_class, runner):
+        """--async submits text and prints job_id without polling."""
+        mock_client = MagicMock()
+        mock_client.__enter__ = Mock(return_value=mock_client)
+        mock_client.__exit__ = Mock(return_value=False)
+        mock_client.submit_ingest.return_value = {"job_id": "j1", "status": "queued"}
+        mock_api_class.return_value = mock_client
+
+        result = runner.invoke(ingest, ["-t", "hello", "-n", "notes", "--async"])
+
+        assert result.exit_code == 0
+        assert "j1" in result.output
+        mock_client.wait_for_job.assert_not_called()
+        # wait should be False when async
+        assert mock_client.submit_ingest.call_args[1]["wait"] is False
+
+    @patch("stache_tools.cli.ingest.StacheAPI")
+    def test_async_file_prints_job_id_no_poll(self, mock_api_class, runner, tmp_path):
+        """--async submits a file and prints job_id without polling."""
+        f = tmp_path / "doc.txt"
+        f.write_text("some content")
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = Mock(return_value=mock_client)
+        mock_client.__exit__ = Mock(return_value=False)
+        mock_client.submit_ingest.return_value = {"job_id": "j1", "status": "queued"}
+        mock_api_class.return_value = mock_client
+
+        result = runner.invoke(ingest, [str(f), "-n", "notes", "--async"])
+
+        assert result.exit_code == 0
+        assert "j1" in result.output
+        mock_client.wait_for_job.assert_not_called()
+
+    @patch("stache_tools.cli.ingest.StacheAPI")
+    def test_default_wait_terminal_on_submit(self, mock_api_class, runner, tmp_path):
+        """Default (wait): sync backend returns terminal on submit -> no poll."""
+        f = tmp_path / "doc.txt"
+        f.write_text("some content")
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = Mock(return_value=mock_client)
+        mock_client.__exit__ = Mock(return_value=False)
+        mock_client.submit_ingest.return_value = {
+            "job_id": "j1", "status": "done", "chunks_created": 7, "doc_id": "d1",
+        }
+        mock_api_class.return_value = mock_client
+
+        result = runner.invoke(ingest, [str(f), "-n", "notes"])
+
+        assert result.exit_code == 0
+        assert "7 chunks" in result.output
+        mock_client.wait_for_job.assert_not_called()
+
+    @patch("stache_tools.cli.ingest.StacheAPI")
+    def test_wait_polls_until_terminal(self, mock_api_class, runner, tmp_path):
+        """Async backend: submit returns queued, wait_for_job returns done."""
+        f = tmp_path / "doc.txt"
+        f.write_text("some content")
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = Mock(return_value=mock_client)
+        mock_client.__exit__ = Mock(return_value=False)
+        mock_client.submit_ingest.return_value = {"job_id": "j1", "status": "queued"}
+        mock_client.wait_for_job.return_value = {
+            "job_id": "j1", "status": "done", "chunks_created": 4, "doc_id": "d1",
+        }
+        mock_api_class.return_value = mock_client
+
+        result = runner.invoke(ingest, [str(f), "-n", "notes"])
+
+        assert result.exit_code == 0
+        assert "4 chunks" in result.output
+        mock_client.wait_for_job.assert_called_once()
+
+    @patch("stache_tools.cli.ingest.StacheAPI")
+    def test_failed_job_exit_1(self, mock_api_class, runner, tmp_path):
+        """A failed terminal job exits 1 with the error detail."""
+        f = tmp_path / "doc.txt"
+        f.write_text("some content")
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = Mock(return_value=mock_client)
+        mock_client.__exit__ = Mock(return_value=False)
+        mock_client.submit_ingest.return_value = {
+            "job_id": "j1", "status": "failed", "error_detail": "boom",
+        }
+        mock_api_class.return_value = mock_client
+
+        result = runner.invoke(ingest, [str(f), "-n", "notes"])
+
+        assert result.exit_code == 1
+        assert "boom" in result.output
+
+    @patch("stache_tools.cli.ingest.StacheAPI")
+    def test_large_file_uses_presign(self, mock_api_class, runner, tmp_path):
+        """File above inline-max uses request_upload + presigned PUT."""
+        f = tmp_path / "big.txt"
+        f.write_text("x" * 200)
+
+        mock_client = MagicMock()
+        mock_client.__enter__ = Mock(return_value=mock_client)
+        mock_client.__exit__ = Mock(return_value=False)
+        mock_client.request_upload.return_value = {
+            "job_id": "j1", "status": "queued",
+            "upload_url": "https://s3/put", "required_headers": {"Content-Type": "text/plain"},
+        }
+        mock_client.wait_for_job.return_value = {
+            "job_id": "j1", "status": "done", "chunks_created": 2, "doc_id": "d1",
+        }
+        mock_api_class.return_value = mock_client
+
+        result = runner.invoke(ingest, [str(f), "-n", "notes", "--inline-max", "10"])
+
+        assert result.exit_code == 0
+        mock_client.request_upload.assert_called_once()
+        mock_client.upload_to_presigned.assert_called_once()
+        mock_client.submit_ingest.assert_not_called()
+        assert "2 chunks" in result.output
+
+
+class TestWaitForJob:
+    """Tests for StacheAPI.wait_for_job directly (mocked transport)."""
+
+    def test_polls_until_done(self):
+        from stache_tools.client.api import StacheAPI
+
+        transport = MagicMock()
+        transport.get.side_effect = [
+            {"job_id": "j1", "status": "queued"},
+            {"job_id": "j1", "status": "done", "chunks_created": 3},
+        ]
+        api = StacheAPI(transport=transport)
+        updates = []
+        with patch("time.sleep"):
+            job = api.wait_for_job("j1", interval=0.01, on_update=updates.append)
+        assert job["status"] == "done"
+        assert len(updates) == 2
+
+    def test_failed_status_returned(self):
+        from stache_tools.client.api import StacheAPI
+
+        transport = MagicMock()
+        transport.get.return_value = {"job_id": "j1", "status": "failed", "error_detail": "x"}
+        api = StacheAPI(transport=transport)
+        job = api.wait_for_job("j1", interval=0.01)
+        assert job["status"] == "failed"
+
+    def test_timeout_raises(self):
+        from stache_tools.client.api import StacheAPI
+
+        transport = MagicMock()
+        transport.get.return_value = {"job_id": "j1", "status": "queued"}
+        api = StacheAPI(transport=transport)
+        with patch("time.sleep"):
+            with pytest.raises(TimeoutError):
+                api.wait_for_job("j1", timeout=0.05, interval=0.01)

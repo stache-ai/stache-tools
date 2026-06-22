@@ -306,6 +306,172 @@ class StacheAPI:
             data=updates
         )
 
+    def submit_ingest(
+        self,
+        *,
+        namespace: str | None = None,
+        filename: str | None = None,
+        content_type: str = "text",
+        text: str | None = None,
+        metadata: dict | None = None,
+        chunking_strategy: str = "recursive",
+        wait: bool = False,
+    ) -> dict[str, Any]:
+        """Submit an ingestion job via the async job contract.
+
+        Against a sync backend the returned job is already terminal; against
+        an async backend it returns a queued/processing job to poll.
+
+        Args:
+            namespace: Target namespace
+            filename: Optional filename to attach to the job
+            content_type: Content type ("text" for text submissions)
+            text: Text content to ingest (for text submissions)
+            metadata: Optional metadata to attach
+            chunking_strategy: Chunking strategy
+            wait: If True, ask the server to block until terminal (capped)
+
+        Returns:
+            Job dict (job_id, status, and any populated result fields)
+        """
+        body: dict[str, Any] = {
+            "content_type": content_type,
+            "chunking_strategy": chunking_strategy,
+            "wait": wait,
+        }
+        for key, value in (
+            ("namespace", namespace),
+            ("filename", filename),
+            ("text", text),
+            ("metadata", metadata),
+        ):
+            if value is not None:
+                body[key] = value
+        return self._client.post("/api/ingest", body)
+
+    def request_upload(
+        self,
+        *,
+        filename: str,
+        namespace: str | None = None,
+        content_type: str = "application/octet-stream",
+        metadata: dict | None = None,
+    ) -> dict[str, Any]:
+        """Request a presigned upload URL for a large file.
+
+        Args:
+            filename: Name of the file to upload
+            namespace: Target namespace
+            content_type: MIME content type of the file
+            metadata: Optional metadata to attach
+
+        Returns:
+            Dict with job_id, upload_url, required_headers, and job fields
+        """
+        body: dict[str, Any] = {
+            "upload": True,
+            "filename": filename,
+            "content_type": content_type,
+        }
+        if namespace:
+            body["namespace"] = namespace
+        if metadata:
+            body["metadata"] = metadata
+        return self._client.post("/api/ingest", body)
+
+    def get_job(self, job_id: str) -> dict[str, Any]:
+        """Get a job by ID.
+
+        Args:
+            job_id: Job identifier
+
+        Returns:
+            Job dict
+        """
+        return self._client.get(f"/api/jobs/{job_id}")
+
+    def list_jobs(self, *, status: str | None = None, limit: int = 50) -> dict[str, Any]:
+        """List jobs for the current principal.
+
+        Args:
+            status: Optional status filter
+            limit: Maximum jobs to return
+
+        Returns:
+            Dict with 'jobs' list
+        """
+        params: dict[str, Any] = {"limit": limit}
+        if status:
+            params["status"] = status
+        return self._client.get("/api/jobs", params)
+
+    def wait_for_job(
+        self,
+        job_id: str,
+        *,
+        timeout: float = 600.0,
+        interval: float = 1.0,
+        max_interval: float = 5.0,
+        on_update=None,
+    ) -> dict[str, Any]:
+        """Poll a job until it reaches a terminal state.
+
+        Uses smart-poll backoff (interval grows by 1.5x up to max_interval).
+
+        Args:
+            job_id: Job identifier
+            timeout: Maximum seconds to wait
+            interval: Initial poll interval
+            max_interval: Maximum poll interval
+            on_update: Optional callback invoked with the job dict each poll
+
+        Returns:
+            Terminal job dict
+
+        Raises:
+            TimeoutError: If the job did not finish within timeout
+        """
+        import time
+
+        TERMINAL = {"done", "skipped", "failed", "cancelled"}
+        deadline = time.monotonic() + timeout
+        wait = interval
+        while time.monotonic() < deadline:
+            job = self.get_job(job_id)
+            if on_update:
+                on_update(job)
+            if job.get("status") in TERMINAL:
+                return job
+            time.sleep(wait)
+            wait = min(wait * 1.5, max_interval)
+        raise TimeoutError(f"job {job_id} did not finish within {timeout}s")
+
+    def upload_to_presigned(
+        self,
+        upload_url: str,
+        file_bytes: bytes,
+        required_headers: dict | None,
+    ) -> None:
+        """Upload bytes directly to a presigned S3 URL.
+
+        This is a direct HTTPS PUT to S3, NOT routed through the transport.
+
+        Args:
+            upload_url: Presigned PUT URL
+            file_bytes: Raw file content
+            required_headers: Headers that must accompany the PUT (must match
+                what was signed, especially Content-Type)
+
+        Raises:
+            httpx.HTTPStatusError: If S3 returns a non-2xx response
+        """
+        import httpx
+
+        response = httpx.put(
+            upload_url, content=file_bytes, headers=required_headers or {}
+        )
+        response.raise_for_status()
+
     def health(self, include_auth: bool = False) -> dict[str, Any]:
         """Check API health.
 

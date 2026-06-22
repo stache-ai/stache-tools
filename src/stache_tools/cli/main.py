@@ -26,6 +26,7 @@ def setup_cli():
     from .health import health
     from .ingest import ingest
     from .batch_ingest import batch_ingest
+    from .jobs import jobs
     from .models import models
     from .namespaces import namespace
     from .search import search
@@ -33,6 +34,7 @@ def setup_cli():
     cli.add_command(search)
     cli.add_command(ingest)
     cli.add_command(batch_ingest)
+    cli.add_command(jobs)
     cli.add_command(namespace)
     cli.add_command(doc)
     cli.add_command(health)
